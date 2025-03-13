@@ -1,0 +1,19 @@
+networks:
+  dev:
+
+services:
+  backend:
+    image: backend
+    build: ./backend
+    networks:
+      - dev
+    ports:
+      - "5000:5000"
+
+  frontend:
+    image: frontend
+    build: ./frontend
+    networks:
+      - dev
+    ports:
+      - "3000:3000"
