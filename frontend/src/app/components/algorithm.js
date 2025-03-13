@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { API_HOST } from "./host";
 
 export default function Algorithm() {
-    const strokeAmount = 30;
+    const strokeAmount = 20;
     let [params, setParams] = useState({size: 0, amount: 30});
     let [ids, setIds] = useState([]);
     let list = [];
@@ -41,6 +41,7 @@ export default function Algorithm() {
         if (points.length == 2) send();
     }
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         const containerSize = document.getElementById('blocks').getBoundingClientRect().width;
         const blockSize = document.getElementsByClassName('Block')[0].getBoundingClientRect().width;

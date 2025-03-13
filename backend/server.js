@@ -1,11 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const sharp = require('sharp');
+const multer = require('multer');
 
 const app = express();
 
 app.use(cors());
 app.use(bodyParser.json());
+app.use('/img', express.static('./img'));
+
+const storage = multer.diskStorage({
+  destination: (req, _, cb) =>  cb(null, `./img/`), // Папка для хранения загруженных файлов
+  filename: (_, file, cb) => cb(null, 'original.jpg') // Сохранение файла с оригинальным именем
+});
+
+const upload = multer({ storage: storage });
 
 function getSign(dX, dY) {
     let signX, signY
@@ -65,5 +75,51 @@ app.post('/drowpoint', function(req, res) {
 
     res.status(200).send({ids});
 });
+
+app.post('/img', upload.single('file'), function(req, res) {
+    res.set({
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+    });
+
+    const image = req.file;
+    console.log(image);
+
+    let points = Array(0);
+
+    async function analyzeImage(imagePath) {
+        try {
+            const { data, info } = await sharp(imagePath)
+                .raw()
+                .toBuffer({ resolveWithObject: true });
+            console.log(info.height)
+            for (let y = 0; y < info.height; y++) {
+                points.push({id: y, line: Array(0)});
+                for (let x = 0; x < info.width; x++) {
+                const idx = (info.width * y + x) * info.channels;
+
+                let red = data[idx];
+                let green = data[idx + 1];
+                let blue = data[idx + 2]; 
+
+                if (red < 127) red = 1;
+                else red = 0
+                if (green < 127) green = 1;
+                else green = 0
+                if (blue < 127) blue = 1;
+                else blue = 0
+
+                if (red + green + blue == 2) points[y].line.push(true);
+                else points[y].line.push({id: `${y}-${x}`, isActive: false});
+                }
+            }
+        } catch (err) {
+          console.error('Error processing image:', err);
+        }
+    }
+
+    analyzeImage(`./img/${req.file.filename}`)
+    .then(() => res.status(200).send({points}))
+})
 
 app.listen(5000);
