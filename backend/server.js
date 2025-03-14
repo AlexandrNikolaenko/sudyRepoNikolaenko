@@ -46,6 +46,7 @@ app.post('/drowpoint', function(req, res) {
     });
 
     let {points, size, x, y, amount} = req.body;
+    amount = Math.floor(amount);
     const from = {x: Math.floor((points[0].x - x) / size), y: Math.floor((points[0].y - y) / size)}
     const to = {x: Math.floor((points[1].x - x) / size), y: Math.floor((points[1].y - y) / size)}
     console.log({to, from});
@@ -109,7 +110,7 @@ app.post('/img', upload.single('file'), function(req, res) {
                 if (blue < 127) blue = 1;
                 else blue = 0
 
-                if (red + green + blue == 2) points[y].line.push(true);
+                if (red + green + blue == 2) points[y].line.push({id: `${y}-${x}`, isActive: true});
                 else points[y].line.push({id: `${y}-${x}`, isActive: false});
                 }
             }
