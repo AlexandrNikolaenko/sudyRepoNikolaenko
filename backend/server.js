@@ -103,14 +103,14 @@ app.post('/img', upload.single('file'), function(req, res) {
                 let green = data[idx + 1];
                 let blue = data[idx + 2]; 
 
-                if (red < 127) red = 1;
+                if (red < 200) red = 1;
                 else red = 0
-                if (green < 127) green = 1;
+                if (green < 200) green = 1;
                 else green = 0
-                if (blue < 127) blue = 1;
+                if (blue < 200) blue = 1;
                 else blue = 0
 
-                if (red + green + blue == 2) points[y].line.push({id: `${y}-${x}`, isActive: true});
+                if (red + green + blue >= 2) points[y].line.push({id: `${y}-${x}`, isActive: true});
                 else points[y].line.push({id: `${y}-${x}`, isActive: false});
                 }
             }
