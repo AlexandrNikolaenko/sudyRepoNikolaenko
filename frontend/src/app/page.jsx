@@ -1,5 +1,5 @@
-import Algorithm from "./components/algorithm";
-import ImageProc from "./components/imageProc";
+import Algorithm from "../components/algorithm";
+import ImageProc from "../components/imageProc";
 
 export default function Home() {
   return (

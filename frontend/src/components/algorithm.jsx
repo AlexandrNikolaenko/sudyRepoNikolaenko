@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from "react"
-import { API_HOST } from "./host";
+import { API_HOST } from "../lib/host";
 
 export default function Algorithm() {
     const strokeAmount = 20;

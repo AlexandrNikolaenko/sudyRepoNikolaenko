@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from "react"
-import { API_HOST } from "./host";
+import { API_HOST } from "../lib/host";
 
 export default function ImageProc() {
     let [data, setData] = useState({data: null, isLoad: false});
