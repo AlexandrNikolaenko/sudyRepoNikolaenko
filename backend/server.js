@@ -3,6 +3,11 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const sharp = require('sharp');
 const multer = require('multer');
+const ffmpeg = require('fluent-ffmpeg');
+ffmpeg.setFfmpegPath('C:/ffmpeg-7.0.2-essentials_build/bin/ffmpeg.exe');
+const cv = require('opencv4nodejs-prebuilt-install');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 
@@ -11,8 +16,18 @@ app.use(bodyParser.json());
 app.use('/img', express.static('./img'));
 
 const storage = multer.diskStorage({
-  destination: (req, _, cb) =>  cb(null, `./img/`), // Папка для хранения загруженных файлов
-  filename: (_, file, cb) => cb(null, 'original.jpg') // Сохранение файла с оригинальным именем
+    destination: (_, file, cb) => {
+      if (file.mimetype.startsWith('image/')) cb(null, './img/');
+      else {
+        cb(null, './video/');
+      }
+    },
+    filename: (_, file, cb) => {
+      if (file.mimetype.startsWith('image/')) cb(null, 'original.jpg');
+      else {
+        cb(null, 'original.mp4');
+      }
+    }
 });
 
 const upload = multer({ storage: storage });
@@ -121,6 +136,78 @@ app.post('/img', upload.single('file'), function(req, res) {
 
     analyzeImage(`./img/${req.file.filename}`)
     .then(() => res.status(200).send({points}))
-})
+});
+
+app.post('/video', upload.single('video'), async (req, res) => {
+    const videoPath = req.file.path;
+    
+    const framesDir = path.join(__dirname, 'frames');
+    fs.mkdirSync(framesDir, { recursive: true });
+  
+    const extractFrames = () =>
+      new Promise((resolve, reject) => {
+        ffmpeg(videoPath)
+          .output(path.join(framesDir, 'frame-%03d.png'))
+          .outputOptions('-vf', 'fps=1')
+          .on('end', resolve)
+          .on('error', reject)
+          .run();
+      });
+  
+    const getSharpestFrame = () => {
+      const files = fs.readdirSync(framesDir).filter(f => f.endsWith('.png'));
+      let maxScore = 0;
+      let sharpestFile = '';
+  
+      for (const file of files) {
+        const img = cv.imread(path.join(framesDir, file)).bgrToGray();
+        const laplacian = img.laplacian(cv.CV_64F);
+        const score = laplacian.abs().mean().w;
+        if (score > maxScore) {
+          maxScore = score;
+          sharpestFile = file;
+        }
+      }
+  
+      return path.join(framesDir, sharpestFile);
+    };
+  
+    const getTextAngleWithOpenCV = (imagePath) => {
+      const img = cv.imread(imagePath);
+      const gray = img.bgrToGray();
+      const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);
+      const thresh = blurred.threshold(0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+      const contours = thresh.findContours(cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  
+      const angles = [];
+  
+      contours.forEach(c => {
+        if (c.area < 100) return;
+        const rotatedRect = c.minAreaRect();
+        let angle = rotatedRect.angle;
+        if (rotatedRect.size.width < rotatedRect.size.height) {
+          angle += 90;
+        }
+        angles.push(angle);
+      });
+  
+      if (angles.length === 0) return 0;
+      const avgAngle = angles.reduce((a, b) => a + b, 0) / angles.length;
+      return Number(avgAngle.toFixed(2));
+    };
+  
+    try {
+      await extractFrames();
+      const sharpestFrame = getSharpestFrame();
+      const angle = getTextAngleWithOpenCV(sharpestFrame);
+  
+      res.send({ message: 'Готово', angle, sharpestFrame });
+    } catch (err) {
+      console.error(err);
+      res.status(500).send({ error: 'Ошибка при обработке видео' });
+    } finally {
+      fs.rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
 
 app.listen(5000);
