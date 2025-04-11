@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { API_HOST } from "@/lib/host";
+import { Indie_Flower } from "next/font/google";
 
 export default function VideoAnalyze() {
     let [file, setFile] = useState(null);
@@ -25,11 +26,19 @@ export default function VideoAnalyze() {
 
     return (
         <div className="flex wrapper w-full flex-col gap-10 items-center">
-            <h2 className="text-white text-7xl font-title w-fit">See your image by line</h2>
+            <h2 className="text-white text-center text-7xl font-title w-fit">The sharpest frame, input your video</h2>
             <form id="videoForm" className="flex gap-5" onSubmit={send}>
                 <AddFileInput name={"Загрузить файл"} setFile={setFile}/>
                 <button className="px-10 py-5 rounded-[10px] bg-white text-dark border-dashed cursor-pointer disabled:opacity-50 disabled:cursor-auto" disabled={!file}>Отправить</button>
             </form>
+            {
+                data.isLoad && !data.data.error && (
+                    <>
+                        <p className="text-white text-center w-fit">Text angle: {data.data.angle}</p>
+                        <p className="text-white text-center w-fit">The sharpest frame: {data.data.sharpestFrame}</p>
+                    </>
+                )
+            }
         </div>
     )
 }
