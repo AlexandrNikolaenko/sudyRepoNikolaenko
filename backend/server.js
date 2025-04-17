@@ -9,6 +9,7 @@ const cv = require('opencv4nodejs-prebuilt-install');
 const fs = require('fs');
 const path = require('path');
 const { createWorker } = require('tesseract.js');
+const { exec } = require('child_process');
 
 const app = express();
 
@@ -197,47 +198,93 @@ app.post('/video', upload.single('video'), async (req, res) => {
       const avgAngle = angles.reduce((a, b) => a + b, 0) / angles.length;
       return Number(avgAngle.toFixed(2));
     };
+
+    function drawRotatedRect(mat, center, width, height, angle, color = new cv.Vec(0, 255, 0), thickness = 2) {
+      const rad = angle * Math.PI / 180;
+    
+      const cosA = Math.cos(rad);
+      const sinA = Math.sin(rad);
+    
+      const dx = width / 2;
+      const dy = height / 2;
+    
+      const points = [
+        new cv.Point2(center.x + dx * cosA - dy * sinA, center.y + dx * sinA + dy * cosA),
+        new cv.Point2(center.x - dx * cosA - dy * sinA, center.y - dx * sinA + dy * cosA),
+        new cv.Point2(center.x - dx * cosA + dy * sinA, center.y - dx * sinA - dy * cosA),
+        new cv.Point2(center.x + dx * cosA + dy * sinA, center.y + dx * sinA - dy * cosA)
+      ];
+    
+      // Соединяем точки в линию
+      for (let i = 0; i < 4; i++) {
+        mat.drawLine(points[i], points[(i + 1) % 4], color, thickness);
+      }
+    }
   
-    const recognizeText = async (imagePath, originalMat) => {
-      const worker = await createWorker('rus', 6);
-
-      const { data } = await worker.recognize(imagePath);
-
-      await worker.terminate();
-
-      console.log(data);
-
-      if (data.words && data.words.length > 0) {
-        data.words.forEach(word => {
-          const { bbox, text } = word;
-          const { x0, y0, x1, y1 } = bbox;
-
-          originalMat.drawRectangle(
-            new cv.Point2(x0, y0),
-            new cv.Point2(x1, y1),
-            new cv.Vec(0, 255, 0),
-            2
-          );
-
-          originalMat.putText(
-            text,
-            new cv.Point2(x0, y0 - 5),
-            cv.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            new cv.Vec(0, 255, 0),
-            1
-          );
-        });
-      } else {
-        console.warn('Слова не найдены (data.words пусто)');
+    const recognizeTextCLI = async (imagePath, originalMat, angle) => {
+      const outputDir = path.join(__dirname, 'outputs'); // <-- Папка output
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true }); // Создаем если не существует
       }
 
-      const cleanedText = data.text.trim().replace(/[^\wа-яА-Я]/gi, '_').slice(0, 30);
-      const outputFilename = `${cleanedText || 'result'}.png`;
-      const outputPath = path.join(outputDir, outputFilename);
-      cv.imwrite(outputPath, originalMat);
+      const outputBase = path.join(outputDir, 'output_ocr'); // <-- output/output_ocr
+      const tsvPath = `${outputBase}.tsv`;
 
-      return { cleanedText, outputPath };
+      return new Promise((resolve, reject) => {
+        const tesseractPath = 'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'; // Убедись, что путь корректен
+
+        const command = `"${tesseractPath}" "${imagePath}" "${outputBase}" -l eng --psm 6 --oem 3 tsv`;
+
+        exec(command, (error, stdout, stderr) => {
+          if (error) {
+            console.error('Ошибка Tesseract CLI:', stderr || error.message);
+            return reject(error);
+          }
+
+          const tsv = fs.readFileSync(tsvPath, 'utf8');
+
+          const words = tsv
+            .split('\n')
+            .slice(1) // пропускаем заголовок
+            .map(row => row.split('\t'))
+            .filter(cols => cols.length > 11 && cols[0] === '5' && cols[11].trim())
+            .map(cols => ({
+              text: cols[11],
+              x0: parseInt(cols[6], 10),
+              y0: parseInt(cols[7], 10),
+              x1: parseInt(cols[6], 10) + parseInt(cols[8], 10),
+              y1: parseInt(cols[7], 10) + parseInt(cols[9], 10),
+            }));
+
+          // Нарисуем прямоугольники
+          words.forEach(({ text, x0, y0, x1, y1 }) => {
+            console.log({ text, x0, y0, x1, y1 });
+            originalMat.drawRectangle(
+              new cv.Point2(x0, y0),
+              new cv.Point2(x1, y1),
+              new cv.Vec(0, 255, 0),
+              2
+            );
+            // drawRotatedRect(originalMat, new cv.Point2((x1 + x0) / 2, (y1 + y0) / 2), x1 - x0, y1 - y0, -angle);
+            originalMat.putText(
+              text,
+              new cv.Point2(x0, y0 - 5),
+              cv.FONT_HERSHEY_SIMPLEX,
+              0.5,
+              new cv.Vec(0, 255, 0),
+              1
+            );
+          });
+
+          const cleanedText = words.map(w => w.text).join(' ').trim().replace(/[^\wа-яА-Я]/gi, '_').slice(0, 30);
+          const outputFilename = `${cleanedText || 'result'}.png`;
+          const outputPath = path.join(outputDir, outputFilename); // <-- Сохраняем в output/
+
+          cv.imwrite(outputPath, originalMat);
+
+          resolve({ cleanedText, outputPath });
+        });
+      });
     };
   
     try {
@@ -246,7 +293,9 @@ app.post('/video', upload.single('video'), async (req, res) => {
       const angle = getTextAngleWithOpenCV(sharpestFramePath);
       const originalMat = cv.imread(sharpestFramePath);
   
-      const { cleanedText, outputPath } = await recognizeText(sharpestFramePath, originalMat);
+      console.log(sharpestFramePath);
+      const { cleanedText, outputPath } = await recognizeTextCLI(sharpestFramePath, originalMat, angle);
+      // const { cleanedText, outputPath } = await recognizeTextCLI('D:\\OpenServer\\OSPanel\\domains\\STUDY\\Proga\\backend\\outputs\\Frame.png', originalMat);
   
       res.send({
         message: 'Готово',
