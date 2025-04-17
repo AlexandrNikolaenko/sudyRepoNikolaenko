@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { API_HOST } from "@/lib/host";
-import { Indie_Flower } from "next/font/google";
 
 export default function VideoAnalyze() {
     let [file, setFile] = useState(null);
     let [data, setData] = useState({data: null, isLoad: false});
-    console.log(data);
+    if (data.data) console.log(data.data);
     async function send(e) {
         e.preventDefault();
         try {
@@ -34,8 +33,8 @@ export default function VideoAnalyze() {
             {
                 data.isLoad && !data.data.error && (
                     <>
-                        <p className="text-white text-center w-fit">Text angle: {data.data.angle}</p>
-                        <p className="text-white text-center w-fit">The sharpest frame: {data.data.sharpestFrame}</p>
+                        {/* <p className="text-white text-center w-fit">Text angle: {data.data.angle}</p>
+                        <p className="text-white text-center w-fit">The sharpest frame: {data.data.sharpestFrame}</p> */}
                     </>
                 )
             }

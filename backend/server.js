@@ -8,6 +8,7 @@ ffmpeg.setFfmpegPath('C:/ffmpeg-7.0.2-essentials_build/bin/ffmpeg.exe');
 const cv = require('opencv4nodejs-prebuilt-install');
 const fs = require('fs');
 const path = require('path');
+const { createWorker } = require('tesseract.js');
 
 const app = express();
 
@@ -140,9 +141,10 @@ app.post('/img', upload.single('file'), function(req, res) {
 
 app.post('/video', upload.single('video'), async (req, res) => {
     const videoPath = req.file.path;
-    
     const framesDir = path.join(__dirname, 'frames');
+    const outputDir = path.join(__dirname, 'outputs');
     fs.mkdirSync(framesDir, { recursive: true });
+    fs.mkdirSync(outputDir, { recursive: true });
   
     const extractFrames = () =>
       new Promise((resolve, reject) => {
@@ -178,9 +180,9 @@ app.post('/video', upload.single('video'), async (req, res) => {
       const blurred = gray.gaussianBlur(new cv.Size(5, 5), 0);
       const thresh = blurred.threshold(0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
       const contours = thresh.findContours(cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-  
+
       const angles = [];
-  
+
       contours.forEach(c => {
         if (c.area < 100) return;
         const rotatedRect = c.minAreaRect();
@@ -190,23 +192,74 @@ app.post('/video', upload.single('video'), async (req, res) => {
         }
         angles.push(angle);
       });
-  
+
       if (angles.length === 0) return 0;
       const avgAngle = angles.reduce((a, b) => a + b, 0) / angles.length;
       return Number(avgAngle.toFixed(2));
     };
   
+    const recognizeText = async (imagePath, originalMat) => {
+      const worker = await createWorker('rus', 6);
+
+      const { data } = await worker.recognize(imagePath);
+
+      await worker.terminate();
+
+      console.log(data);
+
+      if (data.words && data.words.length > 0) {
+        data.words.forEach(word => {
+          const { bbox, text } = word;
+          const { x0, y0, x1, y1 } = bbox;
+
+          originalMat.drawRectangle(
+            new cv.Point2(x0, y0),
+            new cv.Point2(x1, y1),
+            new cv.Vec(0, 255, 0),
+            2
+          );
+
+          originalMat.putText(
+            text,
+            new cv.Point2(x0, y0 - 5),
+            cv.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            new cv.Vec(0, 255, 0),
+            1
+          );
+        });
+      } else {
+        console.warn('Слова не найдены (data.words пусто)');
+      }
+
+      const cleanedText = data.text.trim().replace(/[^\wа-яА-Я]/gi, '_').slice(0, 30);
+      const outputFilename = `${cleanedText || 'result'}.png`;
+      const outputPath = path.join(outputDir, outputFilename);
+      cv.imwrite(outputPath, originalMat);
+
+      return { cleanedText, outputPath };
+    };
+  
     try {
       await extractFrames();
-      const sharpestFrame = getSharpestFrame();
-      const angle = getTextAngleWithOpenCV(sharpestFrame);
+      const sharpestFramePath = getSharpestFrame();
+      const angle = getTextAngleWithOpenCV(sharpestFramePath);
+      const originalMat = cv.imread(sharpestFramePath);
   
-      res.send({ message: 'Готово', angle, sharpestFrame });
+      const { cleanedText, outputPath } = await recognizeText(sharpestFramePath, originalMat);
+  
+      res.send({
+        message: 'Готово',
+        angle,
+        text: cleanedText,
+        output: outputPath
+      });
     } catch (err) {
       console.error(err);
       res.status(500).send({ error: 'Ошибка при обработке видео' });
     } finally {
       fs.rmSync(framesDir, { recursive: true, force: true });
+      fs.rmSync(req.file.path, { force: true });
     }
   });
 
